@@ -5,7 +5,10 @@ edition = "2021"
 description = "A Vec with interior mutability and dynamically checked borrow rules which allows to take disjoint mutable references to its elements"
 categories = ["memory-management"]
 authors = ["Alexander Vedekhin"]
+repository = "https://github.com/alexanderved/vec_cell"
+keywords = ["vec", "cell", "veccell", "vec_cell"]
 license = "MPL-2.0"
+readme = "README.md"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
