@@ -1,13 +1,13 @@
 //! `VecCell` is a `Vec` with interior mutability and dynamically checked borrow rules.
 //! `VecCell` allows to take disjoint mutable borrows to its elements.
-//! 
+//!
 //! # Example
-//! 
+//!
 //! ```
 //! use vec_cell::VecCell;
 //!
-//! let vec_cell: VecCell<i32> = VecCell::new();
-//! 
+//! let mut vec_cell: VecCell<i32> = VecCell::new();
+//!
 //! vec_cell.push(0);
 //! vec_cell.push(1);
 //! vec_cell.push(2);
@@ -17,18 +17,18 @@
 //!     assert_eq!(*vec_cell.borrow(1), 1);
 //!     assert_eq!(*vec_cell.borrow(2), 2);
 //! }
-//! 
+//!
 //! {
 //!     let borrow_mut1 = &mut *vec_cell.borrow_mut(1);
 //!     let borrow_mut2 = &mut *vec_cell.borrow_mut(2);
-//! 
+//!
 //!     *borrow_mut1 = 10;
 //!     *borrow_mut2 = 15;
 //! }
-//! 
-//! assert_eq!(vec_cell.pop(), 15);
-//! assert_eq!(vec_cell.pop(), 10);
-//! assert_eq!(vec_cell.pop(), 0);
+//!
+//! assert_eq!(vec_cell.pop(), Some(15));
+//! assert_eq!(vec_cell.pop(), Some(10));
+//! assert_eq!(vec_cell.pop(), Some(0));
 //! ```
 
 use std::cell::{Cell, UnsafeCell};
@@ -113,6 +113,13 @@ impl Drop for BorrowRefMut<'_> {
     }
 }
 
+/// A trait which is used to implement flattenning of nested types, e.g.
+/// converting `Option<ElementRef<'_, Option<T>>>` to `Option<ElementRef<'_, T>>`.
+pub trait Flatten {
+    type Output;
+    fn flatten(self) -> Self::Output;
+}
+
 /// A wrapper type for a immutably borrowed element from a `VecCell<T>`.
 #[derive(Clone)]
 pub struct ElementRef<'borrow, T: 'borrow> {
@@ -135,6 +142,23 @@ impl<T> Deref for ElementRef<'_, T> {
         // SAFETY: Until `ElementRef` is dropped, `BorrowRef` ensures that there won't be
         // any unique references which are aliasing with obtained shared references.
         unsafe { self.value.as_ref() }
+    }
+}
+
+impl<'borrow, T> Flatten for Option<ElementRef<'borrow, Option<T>>> {
+    type Output = Option<ElementRef<'borrow, T>>;
+
+    /// Converts `Option<ElementRef<'_, Option<T>>>` to `Option<ElementRef<'_, T>>`.
+    fn flatten(self) -> Self::Output {
+        self.and_then(|element_ref_option| {
+            match element_ref_option.as_ref() {
+                Some(value) => Some(ElementRef {
+                    value: unsafe { NonNull::new_unchecked(value as *const _ as *mut _) },
+                    borrow_ref: element_ref_option.borrow_ref,
+                }),
+                None => None,
+            }
+        })
     }
 }
 
@@ -172,6 +196,25 @@ impl<T> DerefMut for ElementRefMut<'_, T> {
         // there won't be any references which are aliasing with obtained
         // unique reference except shared references to VecCell.
         unsafe { self.value.as_mut() }
+    }
+}
+
+impl<'borrow, T> Flatten for Option<ElementRefMut<'borrow, Option<T>>> {
+    type Output = Option<ElementRefMut<'borrow, T>>;
+
+    /// Converts `Option<ElementRefMut<'_, Option<T>>>` to `Option<ElementRefMut<'_, T>>`.
+    fn flatten(self) -> Self::Output {
+        self.and_then(|mut element_ref_mut_option| {
+            match element_ref_mut_option.as_mut() {
+                Some(value) => Some(ElementRefMut {
+                    value: unsafe { NonNull::new_unchecked(value as *mut _) },
+                    borrow_ref_mut: element_ref_mut_option.borrow_ref_mut,
+
+                    _p: PhantomData,
+                }),
+                None => None,
+            }
+        })
     }
 }
 
@@ -944,5 +987,86 @@ mod test {
 
         assert_eq!(vec_cell.swap_remove(0), 1);
         assert!(vec_cell.is_empty());
+    }
+
+    #[test]
+    fn test_element_ref_flatten() {
+        let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
+
+        {
+            let borrow_option0_0 = vec_cell.try_borrow(0).ok();
+            let borrow0_0 = borrow_option0_0.flatten();
+
+            let borrow_option0_1 = vec_cell.try_borrow(0).ok();
+            let borrow0_1 = borrow_option0_1.flatten();
+
+            assert_eq!(**borrow0_0.as_ref().unwrap(), 0);
+            assert_eq!(**borrow0_1.as_ref().unwrap(), 0);
+
+            let borrow_option1 = vec_cell.try_borrow(1).ok();
+            let borrow1 = borrow_option1.flatten();
+
+            assert!(borrow1.is_none());
+
+            let borrow_option2 = vec_cell.try_borrow(2).ok();
+            let borrow2 = borrow_option2.flatten();
+
+            assert!(borrow2.is_none());
+        }
+
+        {
+            let mut borrow_mut0 = vec_cell.borrow_mut(0);
+            *borrow_mut0 = Some(3);
+
+            assert_eq!(*borrow_mut0, Some(3));
+        }
+    }
+
+    #[test]
+    fn test_element_ref_mut_flatten() {
+        let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
+
+        {
+            let borrow_mut_option0_0 = vec_cell.try_borrow_mut(0).ok();
+            let mut borrow_mut0_0 = borrow_mut_option0_0.flatten();
+
+            let borrow_mut_option0_1 = vec_cell.try_borrow_mut(0).ok();
+            let mut borrow_mut0_1 = borrow_mut_option0_1.flatten();
+
+            if let Some(ref mut value_mut0_0) = borrow_mut0_0 {
+                **value_mut0_0 = 5;
+            }
+
+            if let Some(ref mut value_mut0_1) = borrow_mut0_1 {
+                **value_mut0_1 = 6;
+            }
+
+            assert_eq!(**borrow_mut0_0.as_ref().unwrap(), 5);
+            assert!(borrow_mut0_1.as_ref().is_none());
+
+            let borrow_mut_option1 = vec_cell.try_borrow_mut(1).ok();
+            let mut borrow_mut1 = borrow_mut_option1.flatten();
+
+            if let Some(ref mut value_mut1) = borrow_mut1 {
+                **value_mut1 = 7;
+            }
+
+            assert!(borrow_mut1.is_none());
+
+            let borrow_mut_option2 = vec_cell.try_borrow_mut(2).ok();
+            let mut borrow_mut2 = borrow_mut_option2.flatten();
+
+            if let Some(ref mut value_mut2) = borrow_mut2 {
+                **value_mut2 = 8;
+            }
+
+            assert!(borrow_mut2.is_none());
+        }
+
+        {
+            let borrow0 = vec_cell.borrow(0);
+
+            assert_eq!(*borrow0, Some(5));
+        }
     }
 }

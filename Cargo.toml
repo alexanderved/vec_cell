@@ -1,6 +1,6 @@
 [package]
 name = "vec_cell"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "A Vec with interior mutability and dynamically checked borrow rules which allows to take disjoint mutable references to its elements"
 categories = ["memory-management"]
