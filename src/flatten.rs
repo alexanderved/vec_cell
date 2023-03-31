@@ -48,7 +48,7 @@ mod test {
     use crate::*;
 
     #[test]
-    fn test_element_ref_flatten() {
+    fn test_flatten_element_ref_option() {
         let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
 
         {
@@ -81,7 +81,7 @@ mod test {
     }
 
     #[test]
-    fn test_element_ref_mut_flatten() {
+    fn test_flatten_element_ref_mut_option() {
         let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
 
         {
