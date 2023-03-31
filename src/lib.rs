@@ -212,6 +212,14 @@ pub enum BorrowError {
     ElementAlreadyBorrowedMutably,
     #[error("element is already borrowed")]
     ElementAlreadyBorrowed,
+    #[error("{0}")]
+    Other(String),
+}
+
+impl From<String> for BorrowError {
+    fn from(value: String) -> Self {
+        BorrowError::Other(value)
+    }
 }
 
 /// A `Vec` with interior mutability and dynamically checked borrow rules

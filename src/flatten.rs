@@ -170,4 +170,85 @@ mod test {
             assert_eq!(*borrow0, Some(5));
         }
     }
+
+    #[test]
+    fn test_flatten_element_ref_result_option() {
+        let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
+
+        {
+            let borrow_option0_0 = vec_cell.try_borrow(0);
+            let borrow0_0 = borrow_option0_0.flatten();
+
+            let borrow_option0_1 = vec_cell.try_borrow(0);
+            let borrow0_1 = borrow_option0_1.flatten();
+
+            assert_eq!(**borrow0_0.as_ref().unwrap(), 0);
+            assert_eq!(**borrow0_1.as_ref().unwrap(), 0);
+
+            let borrow_option1 = vec_cell.try_borrow(1);
+            let borrow1 = borrow_option1.flatten();
+
+            assert!(borrow1.is_err());
+
+            let borrow_option2 = vec_cell.try_borrow(2);
+            let borrow2 = borrow_option2.flatten();
+
+            assert!(borrow2.is_err());
+        }
+
+        {
+            let mut borrow_mut0 = vec_cell.borrow_mut(0);
+            *borrow_mut0 = Some(3);
+
+            assert_eq!(*borrow_mut0, Some(3));
+        }
+    }
+
+    #[test]
+    fn test_flatten_element_ref_mut_result_option() {
+        let vec_cell: VecCell<Option<i32>> = VecCell::from(vec![Some(0), None]);
+
+        {
+            let borrow_mut_option0_0 = vec_cell.try_borrow_mut(0);
+            let mut borrow_mut0_0 = borrow_mut_option0_0.flatten();
+
+            let borrow_mut_option0_1 = vec_cell.try_borrow_mut(0);
+            let mut borrow_mut0_1 = borrow_mut_option0_1.flatten();
+
+            if let Ok(ref mut value_mut0_0) = borrow_mut0_0 {
+                **value_mut0_0 = 5;
+            }
+
+            if let Ok(ref mut value_mut0_1) = borrow_mut0_1 {
+                **value_mut0_1 = 6;
+            }
+
+            assert_eq!(**borrow_mut0_0.as_ref().unwrap(), 5);
+            assert!(borrow_mut0_1.as_ref().is_err());
+
+            let borrow_mut_option1 = vec_cell.try_borrow_mut(1);
+            let mut borrow_mut1 = borrow_mut_option1.flatten();
+
+            if let Ok(ref mut value_mut1) = borrow_mut1 {
+                **value_mut1 = 7;
+            }
+
+            assert!(borrow_mut1.is_err());
+
+            let borrow_mut_option2 = vec_cell.try_borrow_mut(2);
+            let mut borrow_mut2 = borrow_mut_option2.flatten();
+
+            if let Ok(ref mut value_mut2) = borrow_mut2 {
+                **value_mut2 = 8;
+            }
+
+            assert!(borrow_mut2.is_err());
+        }
+
+        {
+            let borrow0 = vec_cell.borrow(0);
+
+            assert_eq!(*borrow0, Some(5));
+        }
+    }
 }
