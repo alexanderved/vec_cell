@@ -124,8 +124,19 @@ pub trait Flatten {
 #[derive(Clone)]
 pub struct ElementRef<'borrow, T: 'borrow> {
     value: NonNull<T>,
-    #[allow(dead_code)]
     borrow_ref: BorrowRef<'borrow>,
+}
+
+impl<'borrow, T: 'borrow> ElementRef<'borrow, T> {
+    // Creates new `ElementRef`.
+    //
+    // SAFETY: The caller needs to ensure that `value` is a nonnull pointer.
+    pub(crate) unsafe fn new(value: *const T, borrow_ref: BorrowRef<'borrow>) -> Self {
+        Self {
+            value: NonNull::new_unchecked(value as *mut T),
+            borrow_ref,
+        }
+    }
 }
 
 impl<T: Debug> Debug for ElementRef<'_, T> {
@@ -150,14 +161,13 @@ impl<'borrow, T> Flatten for Option<ElementRef<'borrow, Option<T>>> {
 
     /// Converts `Option<ElementRef<'_, Option<T>>>` to `Option<ElementRef<'_, T>>`.
     fn flatten(self) -> Self::Output {
-        self.and_then(|element_ref_option| {
-            match element_ref_option.as_ref() {
-                Some(value) => Some(ElementRef {
-                    value: unsafe { NonNull::new_unchecked(value as *const _ as *mut _) },
-                    borrow_ref: element_ref_option.borrow_ref,
-                }),
-                None => None,
+        self.and_then(|element_ref_option| match element_ref_option.as_ref() {
+            Some(value) => {
+                // SAFETY: `value` is nonnull because it is obtained from
+                // `ElementRef` which is guaranteed to be nonnull.
+                Some(unsafe { ElementRef::new(value as *const T, element_ref_option.borrow_ref) })
             }
+            None => None,
         })
     }
 }
@@ -165,10 +175,23 @@ impl<'borrow, T> Flatten for Option<ElementRef<'borrow, Option<T>>> {
 /// A wrapper type for a mutably borrowed element from a `VecCell<T>`.
 pub struct ElementRefMut<'borrow, T: 'borrow> {
     value: NonNull<T>,
-    #[allow(dead_code)]
     borrow_ref_mut: BorrowRefMut<'borrow>,
 
     _p: PhantomData<&'borrow mut T>,
+}
+
+impl<'borrow, T: 'borrow> ElementRefMut<'borrow, T> {
+    // Creates new `ElementRefMut`.
+    //
+    // SAFETY: The caller needs to ensure that `value` is a nonnull pointer.
+    pub(crate) unsafe fn new(value: *mut T, borrow_ref_mut: BorrowRefMut<'borrow>) -> Self {
+        Self {
+            value: NonNull::new_unchecked(value),
+            borrow_ref_mut,
+
+            _p: PhantomData,
+        }
+    }
 }
 
 impl<T: Debug> Debug for ElementRefMut<'_, T> {
@@ -204,17 +227,18 @@ impl<'borrow, T> Flatten for Option<ElementRefMut<'borrow, Option<T>>> {
 
     /// Converts `Option<ElementRefMut<'_, Option<T>>>` to `Option<ElementRefMut<'_, T>>`.
     fn flatten(self) -> Self::Output {
-        self.and_then(|mut element_ref_mut_option| {
-            match element_ref_mut_option.as_mut() {
-                Some(value) => Some(ElementRefMut {
-                    value: unsafe { NonNull::new_unchecked(value as *mut _) },
-                    borrow_ref_mut: element_ref_mut_option.borrow_ref_mut,
-
-                    _p: PhantomData,
-                }),
+        self.and_then(
+            |mut element_ref_mut_option| match element_ref_mut_option.as_mut() {
+                Some(value) => Some(
+                    // SAFETY: `value` is nonnull because it is obtained from
+                    // `ElementRefMut` which is guaranteed to be nonnull.
+                    unsafe {
+                        ElementRefMut::new(value as *mut T, element_ref_mut_option.borrow_ref_mut)
+                    },
+                ),
                 None => None,
-            }
-        })
+            },
+        )
     }
 }
 
@@ -323,16 +347,13 @@ impl<T> VecCell<T> {
                     .then(|| {
                         // SAFETY: Until `ElementRef` is dropped, `BorrowRef` ensures that we can't
                         // get any unique references which are aliasing with this pointer.
-                        let element = unsafe { (*self.data.get()).as_mut_ptr().add(index) };
+                        let element = unsafe { (*self.data.get()).as_ptr().add(index) };
 
-                        ElementRef {
-                            // SAFETY: The pointer to the element is valid because:
-                            //  1. The pointer to `Vec` which is obtained
-                            //     from `UnsafeCell` is always valid;
-                            //  2. The element is inside the bounds of `Vec` because `index < len`.
-                            value: unsafe { NonNull::new_unchecked(element) },
-                            borrow_ref,
-                        }
+                        // SAFETY: The pointer to the element is valid because:
+                        //  1. The pointer to `Vec` which is obtained
+                        //     from `UnsafeCell` is always valid;
+                        //  2. The element is inside the bounds of `Vec` because `index < len`.
+                        unsafe { ElementRef::new(element, borrow_ref) }
                     })
                     .ok_or(BorrowError::ElementOutOfBounds)
             })
@@ -402,16 +423,11 @@ impl<T> VecCell<T> {
                         // pointer except shared references to VecCell.
                         let element = unsafe { (*self.data.get()).as_mut_ptr().add(index) };
 
-                        ElementRefMut {
-                            // SAFETY: The pointer to the element is valid because:
-                            //  1. The pointer to `Vec` which is obtained
-                            //     from `UnsafeCell` is always valid;
-                            //  2. The element is inside the bounds of `Vec` because `index < len`.
-                            value: unsafe { NonNull::new_unchecked(element) },
-                            borrow_ref_mut,
-
-                            _p: PhantomData,
-                        }
+                        // SAFETY: The pointer to the element is valid because:
+                        //  1. The pointer to `Vec` which is obtained
+                        //     from `UnsafeCell` is always valid;
+                        //  2. The element is inside the bounds of `Vec` because `index < len`.
+                        unsafe { ElementRefMut::new(element, borrow_ref_mut) }
                     })
                     .ok_or(BorrowError::ElementOutOfBounds)
             })
