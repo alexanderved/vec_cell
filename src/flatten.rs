@@ -48,14 +48,18 @@ impl<'borrow, T, E: From<String>> Flatten for Result<ElementRef<'borrow, Option<
 
     /// Converts `Result<ElementRef<'_, Option<T>>, E>` to `Result<ElementRef<'_, T>, E>`.
     fn flatten(self) -> Self::Output {
-        self.and_then(|element_ref_option| match element_ref_option.as_ref() {
-            Some(value) => {
-                // SAFETY: `value` is nonnull because it is obtained from
-                // `ElementRef` which is guaranteed to be nonnull.
-                Ok(unsafe { ElementRef::new(value as *const T, element_ref_option.borrow_ref) })
-            }
-            None => Err("No value was found".to_string().into()),
-        })
+        self.and_then(
+            |element_ref_result_option| match element_ref_result_option.as_ref() {
+                Some(value) => {
+                    // SAFETY: `value` is nonnull because it is obtained from
+                    // `ElementRef` which is guaranteed to be nonnull.
+                    Ok(unsafe {
+                        ElementRef::new(value as *const T, element_ref_result_option.borrow_ref)
+                    })
+                }
+                None => Err("No value was found".to_string().into()),
+            },
+        )
     }
 }
 
@@ -64,18 +68,21 @@ impl<'borrow, T, E: From<String>> Flatten for Result<ElementRefMut<'borrow, Opti
 
     /// Converts `Result<ElementRefMut<'_, Option<T>>>` to `Result<ElementRefMut<'_, T>>`.
     fn flatten(self) -> Self::Output {
-        self.and_then(
-            |mut element_ref_mut_option| match element_ref_mut_option.as_mut() {
+        self.and_then(|mut element_ref_mut_result_option| {
+            match element_ref_mut_result_option.as_mut() {
                 Some(value) => Ok(
                     // SAFETY: `value` is nonnull because it is obtained from
                     // `ElementRefMut` which is guaranteed to be nonnull.
                     unsafe {
-                        ElementRefMut::new(value as *mut T, element_ref_mut_option.borrow_ref_mut)
+                        ElementRefMut::new(
+                            value as *mut T,
+                            element_ref_mut_result_option.borrow_ref_mut,
+                        )
                     },
                 ),
                 None => Err("No value was found".to_string().into()),
-            },
-        )
+            }
+        })
     }
 }
 
