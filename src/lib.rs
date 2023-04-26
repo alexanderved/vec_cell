@@ -328,6 +328,17 @@ impl<T> VecCell<T> {
             })
     }
 
+    /// Returns a reference to an element, without doing bounds and aliasing checking.
+    /// 
+    /// # Safety
+    /// 
+    /// Calling this method with an out-of-bounds index or if the element is already boroowed mutably
+    /// is undefined behavior.
+    #[inline]
+    pub unsafe fn borrow_unchecked(&self, index: usize) -> &T {
+        (*self.data.get()).get_unchecked(index)
+    }
+
     /// Mutably borrows element with specified index.
     ///
     /// The borrow lasts until the returned `ElementRefMut` exits the scope.
@@ -400,6 +411,17 @@ impl<T> VecCell<T> {
                     })
                     .ok_or(BorrowError::ElementOutOfBounds)
             })
+    }
+
+    /// Returns a mutable reference to an element, without doing bounds and aliasing checking.
+    /// 
+    /// # Safety
+    /// 
+    /// Calling this method with an out-of-bounds index or if the element is already boroowed
+    /// is undefined behavior.
+    #[inline]
+    pub unsafe fn borrow_mut_unchecked(&self, index: usize) -> &mut T {
+        (*self.data.get()).get_unchecked_mut(index)
     }
 
     /// Returns the number of elements in `VecCell`.
