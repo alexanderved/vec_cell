@@ -118,13 +118,13 @@ impl Drop for BorrowRefMut<'_> {
 }
 
 /// A wrapper type for a immutably borrowed element from a `VecCell<T>`.
-#[derive(Clone)]
 pub struct ElementRef<'borrow, T: 'borrow> {
     value: NonNull<T>,
     borrow_ref: BorrowRef<'borrow>,
 }
 
 impl<'borrow, T: 'borrow> ElementRef<'borrow, T> {
+    /// Clones [`ElementRef`].
     pub fn clone(orig: &ElementRef<'borrow, T>) -> ElementRef<'borrow, T> {
         unsafe { ElementRef::new(orig.value.as_ptr(), orig.borrow_ref.clone()) }
     }
@@ -175,6 +175,15 @@ pub struct ElementRefMut<'borrow, T: 'borrow> {
 }
 
 impl<'borrow, T: 'borrow> ElementRefMut<'borrow, T> {
+    /// Makes a new [`ElementRefMut`] for a compomnent of the borrowed data.
+    pub fn map<U, F>(mut orig: ElementRefMut<'borrow, T>, f: F) -> ElementRefMut<'borrow, U>
+        where F: FnOnce(&mut T) -> &mut U
+    {
+        // SAFETY: the pointer to the new value is nonnull
+        // because it is created from the reference.
+        unsafe { ElementRefMut::new(f(&mut *orig), orig.borrow_ref_mut) }
+    }
+
     // Creates new `ElementRefMut`.
     //
     // SAFETY: The caller needs to ensure that `value` is a nonnull pointer.
@@ -1041,7 +1050,6 @@ mod test {
 
     #[test]
     fn test_element_ref_map() {
-        #[derive(Clone)]
         struct Test {
             a: i32,
             b: i32,
@@ -1050,10 +1058,40 @@ mod test {
         let vec_cell: VecCell<Test> = VecCell::from(vec![Test { a: 0, b: 1 }]);
         let element_borrow = vec_cell.borrow(0);
 
-        let a_borrow = ElementRef::map(element_borrow.clone(), |eb| &eb.a);
+        let a_borrow = ElementRef::map(ElementRef::clone(&element_borrow), |eb| &eb.a);
         assert_eq!(*a_borrow, 0);
 
         let b_borrow = ElementRef::map(element_borrow, |eb| &eb.b);
         assert_eq!(*b_borrow, 1);
+    }
+
+    #[test]
+    fn test_element_ref_mut_map() {
+        struct Test {
+            a: i32,
+            b: i32,
+        }
+
+        let vec_cell: VecCell<Test> = VecCell::from(vec![Test { a: 0, b: 1 }]);
+
+        {
+            let element_borrow_mut = vec_cell.borrow_mut(0);
+
+            let mut a_borrow = ElementRefMut::map(element_borrow_mut, |eb| &mut eb.a);
+            assert_eq!(*a_borrow, 0);
+
+            *a_borrow = 2;
+            assert_eq!(*a_borrow, 2);
+        }
+
+        {
+            let element_borrow_mut = vec_cell.borrow_mut(0);
+
+            let mut b_borrow = ElementRefMut::map(element_borrow_mut, |eb| &mut eb.b);
+            assert_eq!(*b_borrow, 1);
+
+            *b_borrow = 3;
+            assert_eq!(*b_borrow, 3);
+        }
     }
 }
