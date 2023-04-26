@@ -125,6 +125,10 @@ pub struct ElementRef<'borrow, T: 'borrow> {
 }
 
 impl<'borrow, T: 'borrow> ElementRef<'borrow, T> {
+    pub fn clone(orig: &ElementRef<'borrow, T>) -> ElementRef<'borrow, T> {
+        unsafe { ElementRef::new(orig.value.as_ptr(), orig.borrow_ref.clone()) }
+    }
+
     /// Makes a new [`ElementRef`] for a compomnent of the borrowed data.
     pub fn map<U, F>(orig: ElementRef<'borrow, T>, f: F) -> ElementRef<'borrow, U>
         where F: FnOnce(&T) -> &U
@@ -133,7 +137,7 @@ impl<'borrow, T: 'borrow> ElementRef<'borrow, T> {
         // because it is created from the reference.
         unsafe { ElementRef::new(f(&*orig), orig.borrow_ref) }
     }
-    
+
     // Creates new `ElementRef`.
     //
     // SAFETY: The caller needs to ensure that `value` is a nonnull pointer.
