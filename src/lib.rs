@@ -334,6 +334,19 @@ impl<T> VecCell<T> {
     /// 
     /// Calling this method with an out-of-bounds index or if the element is already boroowed mutably
     /// is undefined behavior.
+    /// 
+    /// # Examples
+    ///
+    /// ```
+    /// use vec_cell::VecCell;
+    ///
+    /// let vec_cell: VecCell<i32> = VecCell::from(vec![0, 1, 2]);
+    ///
+    /// // let borrow_mut_unchecked = vec_cell.borrow_mut_unchecked(1); <--- UB
+    /// let borrow_unchecked = unsafe { vec_cell.borrow_unchecked(1) };
+    /// assert_eq!(borrow_unchecked, &1);
+    /// 
+    /// ```
     #[inline]
     pub unsafe fn borrow_unchecked(&self, index: usize) -> &T {
         (*self.data.get()).get_unchecked(index)
