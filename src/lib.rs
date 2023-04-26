@@ -125,6 +125,15 @@ pub struct ElementRef<'borrow, T: 'borrow> {
 }
 
 impl<'borrow, T: 'borrow> ElementRef<'borrow, T> {
+    /// Makes a new [`ElementRef`] for a compomnent of the borrowed data.
+    pub fn map<U, F>(orig: ElementRef<'borrow, T>, f: F) -> ElementRef<'borrow, U>
+        where F: FnOnce(&T) -> &U
+    {
+        // SAFETY: the pointer to the new value is nonnull
+        // because it is created from the reference.
+        unsafe { ElementRef::new(f(&*orig), orig.borrow_ref) }
+    }
+    
     // Creates new `ElementRef`.
     //
     // SAFETY: The caller needs to ensure that `value` is a nonnull pointer.
@@ -1024,5 +1033,23 @@ mod test {
 
         assert_eq!(vec_cell.swap_remove(0), 1);
         assert!(vec_cell.is_empty());
+    }
+
+    #[test]
+    fn test_element_ref_map() {
+        #[derive(Clone)]
+        struct Test {
+            a: i32,
+            b: i32,
+        }
+
+        let vec_cell: VecCell<Test> = VecCell::from(vec![Test { a: 0, b: 1 }]);
+        let element_borrow = vec_cell.borrow(0);
+
+        let a_borrow = ElementRef::map(element_borrow.clone(), |eb| &eb.a);
+        assert_eq!(*a_borrow, 0);
+
+        let b_borrow = ElementRef::map(element_borrow, |eb| &eb.b);
+        assert_eq!(*b_borrow, 1);
     }
 }
